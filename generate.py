@@ -32,8 +32,9 @@ def _load_config_file(config_path: str) -> dict:
 @click.option("--output", default=None, help="Output HTML path (default: github-summary.html)")
 @click.option("--config", "config_path", default="config.yaml", help="Config file path")
 @click.option("--ollama-model", default=None, help="Ollama model name (default: llama3)")
+@click.option("--ollama-url", default=None, help="Ollama base URL (default: http://localhost:11434)")
 @click.option("--skip-ollama", is_flag=True, default=False, help="Skip LLM grouping")
-def main(username, mode, output, config_path, ollama_model, skip_ollama):
+def main(username, mode, output, config_path, ollama_model, ollama_url, skip_ollama):
     file_cfg = _load_config_file(config_path)
 
     resolved_username = username or file_cfg.get("username")
@@ -48,6 +49,7 @@ def main(username, mode, output, config_path, ollama_model, skip_ollama):
     resolved_mode = mode or file_cfg.get("mode", "public")
     resolved_output = output or file_cfg.get("output", "github-summary.html")
     resolved_model = ollama_model or file_cfg.get("ollama_model", "llama3")
+    resolved_url = ollama_url or file_cfg.get("ollama_url", "http://localhost:11434")
 
     raw_groups = file_cfg.get("groups", {}) or {}
     groups = {
@@ -63,6 +65,7 @@ def main(username, mode, output, config_path, ollama_model, skip_ollama):
         mode=resolved_mode,
         output=resolved_output,
         ollama_model=resolved_model,
+        ollama_url=resolved_url,
         skip_ollama=skip_ollama,
         groups=groups,
     )
