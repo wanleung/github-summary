@@ -4,6 +4,15 @@ from datetime import datetime, timezone
 from github_summary.models import Config, RepoData, UserProfile
 from github_summary.renderer import render
 
+TOP_RECENT_START = "🕒 Recently Updated"
+TOP_RECENT_END = "📝 Most Commits"
+TOP_STARS_START = "⭐ Most Starred"
+TOP_STARS_END = "🍴 Most Forked"
+
+
+def _between(html, start, end):
+    return html.split(start, 1)[1].split(end, 1)[0]
+
 
 def _profile():
     return UserProfile(
@@ -65,13 +74,17 @@ def test_render_includes_avatar():
 def test_render_top_stars_shows_highest():
     repos = [_repo(f"repo-{i}", stars=i) for i in range(15)]
     html = render(_profile(), repos, {}, _config())
-    assert "repo-14" in html  # highest starred
+    top_stars = _between(html, TOP_STARS_START, TOP_STARS_END)
+    assert "repo-14" in top_stars  # highest starred
+    assert "repo-0" not in top_stars  # below top 10
 
 
 def test_render_top_recent_shows_most_recent():
     repos = [_repo(f"repo-{i}", updated_days_ago=i) for i in range(15)]
     html = render(_profile(), repos, {}, _config())
-    assert "repo-0" in html   # most recent (0 days ago)
+    top_recent = _between(html, TOP_RECENT_START, TOP_RECENT_END)
+    assert "repo-0" in top_recent   # most recent (0 days ago)
+    assert "repo-14" not in top_recent  # oldest, not in top 10
 
 
 def test_render_separates_own_and_forked():

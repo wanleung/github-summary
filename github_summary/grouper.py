@@ -111,7 +111,9 @@ def group_repos(repos: List[RepoData], config: Config) -> GroupMap:
     if remaining and not config.skip_ollama:
         llm_groups = _group_by_llm(remaining, config.ollama_model)
         _merge_into_result(llm_groups)
-        assigned = {repo.name for repos_in_group in llm_groups.values() for repo in repos_in_group}
+        assigned = set()
+        for repos_in_group in llm_groups.values():
+            assigned.update(repo.name for repo in repos_in_group)
         remaining = [repo for repo in remaining if repo.name not in assigned]
 
     # Step 4: catch-all
