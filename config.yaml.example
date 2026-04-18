@@ -1,0 +1,13 @@
+# GitHub Summary Generator — example config
+# Copy to config.yaml and fill in your details.
+
+username: your-github-username   # required if not using --username flag
+mode: public                     # public (only public repos) | private (all repos)
+output: github-summary.html      # output file name
+ollama_model: llama3             # Ollama model for auto-grouping
+
+groups:
+  AI Tools:
+    repos: [repo-a, repo-b]        # explicit repo names
+  DevOps:
+    topics: [kubernetes, docker]   # match by GitHub topic tag
