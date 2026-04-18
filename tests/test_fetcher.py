@@ -1,5 +1,4 @@
 # tests/test_fetcher.py
-import time
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, call, patch
 
@@ -105,37 +104,28 @@ def test_fetch_repos_includes_fork_parent():
 
 
 def test_fetch_commit_count_returns_user_total():
-    contributors = [
-        {"author": {"login": "user"}, "total": 47},
-        {"author": {"login": "other"}, "total": 12},
-    ]
-    with patch("requests.get", return_value=_mock_response(contributors)):
+    link = '<https://api.github.com/repos/user/my-repo/commits?page=2>; rel="next", <https://api.github.com/repos/user/my-repo/commits?page=47>; rel="last"'
+    with patch("requests.get", return_value=_mock_response([], headers={"Link": link})):
         count = fetch_commit_count("user", "my-repo", "token")
     assert count == 47
 
 
-def test_fetch_commit_count_returns_zero_if_user_not_contributor():
-    contributors = [{"author": {"login": "other"}, "total": 12}]
-    with patch("requests.get", return_value=_mock_response(contributors)):
+def test_fetch_commit_count_returns_count_when_no_link_header():
+    commits = [{"sha": "abc"}, {"sha": "def"}]
+    with patch("requests.get", return_value=_mock_response(commits)):
         count = fetch_commit_count("user", "my-repo", "token")
+    assert count == 2
+
+
+def test_fetch_commit_count_returns_zero_on_404():
+    with patch("requests.get", return_value=_mock_response({}, status=404)):
+        count = fetch_commit_count("user", "empty-repo", "token")
     assert count == 0
 
 
-def test_fetch_commit_count_retries_on_202():
-    mock_202 = _mock_response({}, status=202)
-    contributors = [{"author": {"login": "user"}, "total": 5}]
-    mock_200 = _mock_response(contributors)
-    with patch("requests.get", side_effect=[mock_202, mock_200]):
-        with patch("time.sleep"):
-            count = fetch_commit_count("user", "repo", "token")
-    assert count == 5
-
-
-def test_fetch_commit_count_gives_up_after_3_retries():
-    mock_202 = _mock_response({}, status=202)
-    with patch("requests.get", return_value=mock_202):
-        with patch("time.sleep"):
-            count = fetch_commit_count("user", "repo", "token")
+def test_fetch_commit_count_returns_zero_on_409_empty_repo():
+    with patch("requests.get", return_value=_mock_response({}, status=409)):
+        count = fetch_commit_count("user", "empty-repo", "token")
     assert count == 0
 
 
