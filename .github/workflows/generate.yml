@@ -1,0 +1,48 @@
+# .github/workflows/generate.yml
+name: Generate GitHub Summary
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"   # Every Sunday at midnight UTC
+  workflow_dispatch:        # Allow manual trigger
+
+permissions:
+  contents: write           # Needed to commit the generated file back
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate summary page
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python generate.py \
+            --mode public \
+            --skip-ollama \
+            --output github-summary.html
+
+      - name: Commit generated file
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add github-summary.html
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: regenerate github-summary.html [skip ci]"
+            git push
+          fi

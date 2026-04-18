@@ -1,0 +1,270 @@
+{# github_summary/templates/summary.html.j2 #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>@{{ profile.login }} — GitHub Summary</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+      --green: #3fb950; --orange: #f78166;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.5; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }
+
+    /* Header */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1.5rem 0; }
+    .header-inner { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+    .avatar { width: 72px; height: 72px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; }
+    .header-info h1 { font-size: 1.4rem; font-weight: 700; }
+    .bio { color: var(--muted); margin-top: 0.25rem; }
+    .header-meta { display: flex; gap: 1rem; flex-wrap: wrap; color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem; }
+    .header-right { margin-left: auto; text-align: right; font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+    .badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.35rem; }
+    .badge.public { background: #1a4731; color: var(--green); }
+    .badge.private { background: #3b1f1f; color: var(--orange); }
+
+    /* Sections */
+    section { padding: 2rem 0; border-bottom: 1px solid var(--border); }
+    section:last-child { border-bottom: none; }
+    h2 { font-size: 0.78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1rem; }
+
+    /* Rankings */
+    .rankings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+    .ranking-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+    .ranking-card h3 { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.75rem; }
+    ol.ranking-list { list-style: none; }
+    ol.ranking-list li { display: flex; justify-content: space-between; align-items: baseline; padding: 0.3rem 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+    ol.ranking-list li:last-child { border-bottom: none; }
+    .rank-num { color: var(--muted); font-size: 0.72rem; min-width: 1.4rem; display: inline-block; }
+    .stat { color: var(--muted); font-size: 0.72rem; white-space: nowrap; margin-left: 0.5rem; flex-shrink: 0; }
+
+    /* Groups */
+    .groups-tags { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .group-tag { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.2rem 0.75rem; font-size: 0.78rem; color: var(--accent); }
+    details.group-detail { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; overflow: hidden; }
+    details.group-detail summary { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; font-size: 0.88rem; list-style: none; display: flex; justify-content: space-between; align-items: center; user-select: none; }
+    details.group-detail summary::-webkit-details-marker { display: none; }
+    .summary-arrow { color: var(--muted); transition: transform 0.15s; }
+    details.group-detail[open] .summary-arrow { transform: rotate(90deg); }
+    .group-count { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: 0.5rem; }
+    .group-repos-grid { padding: 0 1rem 1rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.5rem; }
+    .group-repo-item { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.65rem 0.85rem; }
+    .repo-name-link { font-weight: 600; font-size: 0.85rem; }
+    .repo-desc { color: var(--muted); font-size: 0.78rem; margin-top: 0.2rem; }
+    .repo-stats { display: flex; gap: 0.75rem; margin-top: 0.4rem; font-size: 0.72rem; color: var(--muted); }
+
+    /* Repo lists */
+    .repo-lists-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; }
+    @media (max-width: 768px) { .repo-lists-grid { grid-template-columns: 1fr; } }
+    table.repo-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    table.repo-table th { text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
+    table.repo-table td { padding: 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    table.repo-table tr:last-child td { border-bottom: none; }
+    .repo-desc-small { color: var(--muted); font-size: 0.75rem; margin-top: 0.15rem; }
+    .lang-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); margin-right: 3px; vertical-align: middle; }
+    .lang-Python { background: #3572A5; } .lang-JavaScript { background: #f1e05a; }
+    .lang-TypeScript { background: #2b7489; } .lang-Go { background: #00ADD8; }
+    .lang-Rust { background: #dea584; } .lang-Java { background: #b07219; }
+    .lang-Ruby { background: #701516; } .lang-Shell { background: #89e051; }
+    .lang-C { background: #555555; } .lang-Cpp { background: #f34b7d; }
+    .lang-Csharp { background: #178600; }
+    .lang-Dart { background: #00B4AB; } .lang-Swift { background: #F05138; }
+    .lang-Kotlin { background: #A97BFF; } .lang-PHP { background: #4F5D95; }
+    footer { text-align: center; padding: 2rem 0; color: var(--muted); font-size: 0.78rem; border-top: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <div class="header-inner">
+      <img class="avatar" src="{{ profile.avatar_url }}" alt="{{ profile.login }}">
+      <div class="header-info">
+        <h1><a href="https://github.com/{{ profile.login }}">@{{ profile.login }}</a></h1>
+        {% if profile.bio %}<p class="bio">{{ profile.bio }}</p>{% endif %}
+        <div class="header-meta">
+          {% if profile.location %}<span>📍 {{ profile.location }}</span>{% endif %}
+          {% if profile.website %}<a href="{{ profile.website }}">🔗 {{ profile.website }}</a>{% endif %}
+          <span>📦 {{ profile.public_repo_count }} public repos</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div>Generated: {{ generated_at }}</div>
+        <span class="badge {{ config.mode }}">{{ config.mode }}</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+
+    <!-- Top 10 Rankings -->
+    <section>
+      <h2>📊 Top 10 Rankings</h2>
+      <div class="rankings-grid">
+
+        <div class="ranking-card">
+          <h3>🕒 Recently Updated</h3>
+          <ol class="ranking-list">
+            {% for repo in top_recent %}
+            <li>
+              <span><span class="rank-num">{{ loop.index }}.</span><a href="{{ repo.url }}">{{ repo.name }}</a></span>
+              <span class="stat">{{ repo.updated_at.strftime('%Y-%m-%d') }}</span>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
+
+        <div class="ranking-card">
+          <h3>📝 Most Commits</h3>
+          <ol class="ranking-list">
+            {% for repo in top_commits %}
+            <li>
+              <span><span class="rank-num">{{ loop.index }}.</span><a href="{{ repo.url }}">{{ repo.name }}</a></span>
+              <span class="stat">{{ repo.commit_count }} commits</span>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
+
+        <div class="ranking-card">
+          <h3>⭐ Most Starred</h3>
+          <ol class="ranking-list">
+            {% for repo in top_stars %}
+            <li>
+              <span><span class="rank-num">{{ loop.index }}.</span><a href="{{ repo.url }}">{{ repo.name }}</a></span>
+              <span class="stat">⭐ {{ repo.stars }}</span>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
+
+        <div class="ranking-card">
+          <h3>🍴 Most Forked</h3>
+          <ol class="ranking-list">
+            {% for repo in top_forks %}
+            <li>
+              <span><span class="rank-num">{{ loop.index }}.</span><a href="{{ repo.url }}">{{ repo.name }}</a></span>
+              <span class="stat">🍴 {{ repo.forks }}</span>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Project Groups -->
+    {% if groups %}
+    <section>
+      <h2>🗂️ Project Groups</h2>
+      <div class="groups-tags">
+        {% for group_name, group_repos in groups.items() %}
+        <span class="group-tag">{{ group_name }} ({{ group_repos | length }})</span>
+        {% endfor %}
+      </div>
+      {% for group_name, group_repos in groups.items() %}
+      <details class="group-detail">
+        <summary>
+          <span>{{ group_name }}<span class="group-count">{{ group_repos | length }} repos</span></span>
+          <span class="summary-arrow">▸</span>
+        </summary>
+        <div class="group-repos-grid">
+          {% for repo in group_repos %}
+          <div class="group-repo-item">
+            <div class="repo-name-link"><a href="{{ repo.url }}">{{ repo.name }}</a></div>
+            {% if repo.description %}<div class="repo-desc">{{ repo.description }}</div>{% endif %}
+            <div class="repo-stats">
+              {% if repo.language %}<span>{{ repo.language }}</span>{% endif %}
+              <span>⭐ {{ repo.stars }}</span>
+              <span>🍴 {{ repo.forks }}</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    <!-- Own Repos & Forks -->
+    <section>
+      <div class="repo-lists-grid">
+
+        <div>
+          <h2>🏠 My Repos ({{ own_repos | length }})</h2>
+          <table class="repo-table">
+            <thead>
+              <tr>
+                <th>Repository</th>
+                <th>Lang</th>
+                <th>⭐</th>
+                <th>🍴</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for repo in own_repos %}
+              <tr>
+                <td>
+                  <a href="{{ repo.url }}">{{ repo.name }}</a>
+                  {% if repo.description %}<div class="repo-desc-small">{{ repo.description }}</div>{% endif %}
+                </td>
+                <td>
+                  {% if repo.language %}
+                  <span class="lang-dot lang-{{ language_class(repo.language) }}"></span>{{ repo.language }}
+                  {% endif %}
+                </td>
+                <td>{{ repo.stars }}</td>
+                <td>{{ repo.forks }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <h2>🍴 Forked From Others ({{ forked_repos | length }})</h2>
+          <table class="repo-table">
+            <thead>
+              <tr>
+                <th>Repository</th>
+                <th>Origin</th>
+                <th>⭐</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for repo in forked_repos %}
+              <tr>
+                <td><a href="{{ repo.url }}">{{ repo.name }}</a></td>
+                <td>
+                  {% if repo.parent_full_name %}
+                  <a href="https://github.com/{{ repo.parent_full_name }}" style="color: var(--muted); font-size: 0.78rem">{{ repo.parent_full_name }}</a>
+                  {% endif %}
+                </td>
+                <td>{{ repo.stars }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  Generated by <a href="https://github.com/wanleung/github-summary">github-summary</a> ·
+  <a href="https://github.com/{{ profile.login }}">github.com/{{ profile.login }}</a>
+</footer>
+
+</body>
+</html>
