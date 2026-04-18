@@ -35,9 +35,9 @@ def _group_by_topics(repos: List[RepoData]) -> Tuple[GroupMap, List[RepoData]]:
 
     for repo in repos:
         for topic in repo.topics:
-            if topic not in result:
-                result[topic] = []
             if repo.name not in used:
+                if topic not in result:
+                    result[topic] = []
                 result[topic].append(repo)
                 used.add(repo.name)
 
@@ -89,19 +89,30 @@ def _group_by_llm(repos: List[RepoData], ollama_model: str) -> GroupMap:
 def group_repos(repos: List[RepoData], config: Config) -> GroupMap:
     result: GroupMap = {}
 
+    def _merge_into_result(groups: GroupMap) -> None:
+        for group_name, grouped_repos in groups.items():
+            if group_name in result:
+                existing = {repo.name for repo in result[group_name]}
+                result[group_name].extend(
+                    repo for repo in grouped_repos if repo.name not in existing
+                )
+            else:
+                result[group_name] = list(grouped_repos)
+
     # Step 1: config-defined groups (highest priority)
     config_groups, remaining = _group_by_config(repos, config.groups)
-    result.update(config_groups)
+    _merge_into_result(config_groups)
 
     # Step 2: GitHub topic auto-grouping
     topic_groups, remaining = _group_by_topics(remaining)
-    result.update(topic_groups)
+    _merge_into_result(topic_groups)
 
     # Step 3: Ollama LLM grouping (if enabled and Ollama reachable)
     if remaining and not config.skip_ollama:
         llm_groups = _group_by_llm(remaining, config.ollama_model)
-        result.update(llm_groups)
-        remaining = []
+        _merge_into_result(llm_groups)
+        assigned = {repo.name for repos_in_group in llm_groups.values() for repo in repos_in_group}
+        remaining = [repo for repo in remaining if repo.name not in assigned]
 
     # Step 4: catch-all
     if remaining:

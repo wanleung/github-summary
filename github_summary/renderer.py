@@ -1,6 +1,7 @@
 # github_summary/renderer.py
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 from typing import List
 
 from jinja2 import Environment, FileSystemLoader
@@ -14,6 +15,16 @@ def _top10(repos: List[RepoData], key, reverse: bool = True) -> List[RepoData]:
     return sorted(repos, key=key, reverse=reverse)[:10]
 
 
+def _language_class(language: str) -> str:
+    language_map = {
+        "C++": "Cpp",
+        "C#": "Csharp",
+    }
+    if language in language_map:
+        return language_map[language]
+    return re.sub(r"[^A-Za-z0-9]", "", language)
+
+
 def render(
     profile: UserProfile,
     repos: List[RepoData],
@@ -24,7 +35,7 @@ def render(
         [r for r in repos if not r.is_fork],
         key=lambda r: (r.updated_at, r.stars),
         reverse=True,
-    )[:10]
+    )
     forked_repos = sorted(
         [r for r in repos if r.is_fork],
         key=lambda r: r.stars,
@@ -42,6 +53,7 @@ def render(
         "groups": groups,
         "own_repos": own_repos,
         "forked_repos": forked_repos,
+        "language_class": _language_class,
     }
 
     env = Environment(

@@ -73,6 +73,7 @@
     .lang-Rust { background: #dea584; } .lang-Java { background: #b07219; }
     .lang-Ruby { background: #701516; } .lang-Shell { background: #89e051; }
     .lang-C { background: #555555; } .lang-Cpp { background: #f34b7d; }
+    .lang-Csharp { background: #178600; }
     .lang-Dart { background: #00B4AB; } .lang-Swift { background: #F05138; }
     .lang-Kotlin { background: #A97BFF; } .lang-PHP { background: #4F5D95; }
     footer { text-align: center; padding: 2rem 0; color: var(--muted); font-size: 0.78rem; border-top: 1px solid var(--border); }
@@ -217,7 +218,7 @@
                 </td>
                 <td>
                   {% if repo.language %}
-                  <span class="lang-dot lang-{{ repo.language | replace('+', 'p') | replace('#', 'sharp') | replace(' ', '') }}"></span>{{ repo.language }}
+                  <span class="lang-dot lang-{{ language_class(repo.language) }}"></span>{{ repo.language }}
                   {% endif %}
                 </td>
                 <td>{{ repo.stars }}</td>

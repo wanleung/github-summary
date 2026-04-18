@@ -43,7 +43,6 @@ def fetch_repos(username: str, token: str, mode: str) -> List[RepoData]:
             params = {"per_page": 100, "page": page, "type": "owner"}
 
         resp = requests.get(url, headers=_headers(token), params=params)
-        resp.raise_for_status()
 
         remaining = int(resp.headers.get("X-RateLimit-Remaining", 1))
         if remaining == 0:
@@ -52,6 +51,7 @@ def fetch_repos(username: str, token: str, mode: str) -> List[RepoData]:
                 f"GitHub rate limit hit. Resets at timestamp {reset}. "
                 "Wait and try again."
             )
+        resp.raise_for_status()
 
         batch = resp.json()
         if not batch:

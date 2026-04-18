@@ -89,6 +89,14 @@ def test_group_by_topics_repos_with_no_topics_remain():
     assert remaining[0].name == "repo-a"
 
 
+def test_group_by_topics_does_not_create_empty_groups():
+    repos = [_repo("repo-a", topics=["python", "cli"])]
+    result, remaining = _group_by_topics(repos)
+    assert "python" in result
+    assert "cli" not in result
+    assert len(remaining) == 0
+
+
 def test_group_repos_full_priority_chain():
     repos = [
         _repo("explicit", topics=["python"]),   # config wins
@@ -118,8 +126,6 @@ def test_group_repos_skip_ollama_sends_ungrouped_to_other():
 def test_group_repos_ollama_called_when_not_skipped():
     repos = [_repo("unmatched")]
     config = _config(skip_ollama=False)
-    fake_llm_result = {"Misc": ["unmatched"]}
-
     with patch(
         "github_summary.grouper._group_by_llm", return_value={"Misc": repos}
     ) as mock_llm:
@@ -127,3 +133,24 @@ def test_group_repos_ollama_called_when_not_skipped():
 
     mock_llm.assert_called_once()
     assert "Misc" in result
+
+
+def test_group_repos_merges_topic_group_with_same_name():
+    repos = [_repo("manual"), _repo("topic-repo", topics=["python"])]
+    config = _config(groups={"python": GroupConfig(repos=["manual"], topics=[])})
+    result = group_repos(repos, config)
+    assert "python" in result
+    assert {repo.name for repo in result["python"]} == {"manual", "topic-repo"}
+
+
+def test_group_repos_preserves_repos_omitted_by_llm():
+    repos = [_repo("r1"), _repo("r2")]
+    config = _config(skip_ollama=False)
+    with patch(
+        "github_summary.grouper._group_by_llm", return_value={"LLM Group": [_repo("r1")]}
+    ):
+        result = group_repos(repos, config)
+    assert "LLM Group" in result
+    assert {repo.name for repo in result["LLM Group"]} == {"r1"}
+    assert "Other" in result
+    assert {repo.name for repo in result["Other"]} == {"r2"}

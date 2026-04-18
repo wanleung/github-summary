@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+import requests
 
 from github_summary.fetcher import fetch_commit_count, fetch_repos, fetch_user
 from github_summary.models import RepoData, UserProfile
@@ -141,5 +142,17 @@ def test_fetch_commit_count_gives_up_after_3_retries():
 def test_fetch_repos_raises_on_rate_limit():
     headers = {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "9999999999"}
     with patch("requests.get", return_value=_mock_response([], headers=headers)):
+        with pytest.raises(RuntimeError, match="rate limit"):
+            fetch_repos("user", "token", "public")
+
+
+def test_fetch_repos_raises_runtime_error_before_http_error_on_rate_limit():
+    mock_resp = _mock_response(
+        [],
+        status=403,
+        headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "9999999999"},
+    )
+    mock_resp.raise_for_status.side_effect = requests.HTTPError("forbidden")
+    with patch("requests.get", return_value=mock_resp):
         with pytest.raises(RuntimeError, match="rate limit"):
             fetch_repos("user", "token", "public")

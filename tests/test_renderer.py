@@ -16,7 +16,15 @@ def _profile():
     )
 
 
-def _repo(name, stars=0, forks=0, commits=0, is_fork=False, updated_days_ago=0):
+def _repo(
+    name,
+    stars=0,
+    forks=0,
+    commits=0,
+    is_fork=False,
+    updated_days_ago=0,
+    language="Python",
+):
     from datetime import timedelta
     return RepoData(
         name=name,
@@ -26,7 +34,7 @@ def _repo(name, stars=0, forks=0, commits=0, is_fork=False, updated_days_ago=0):
         forks=forks,
         updated_at=datetime(2026, 4, 18, tzinfo=timezone.utc) - timedelta(days=updated_days_ago),
         commit_count=commits,
-        language="Python",
+        language=language,
         topics=[],
         is_fork=is_fork,
         parent_full_name="org/original" if is_fork else None,
@@ -58,14 +66,12 @@ def test_render_top_stars_shows_highest():
     repos = [_repo(f"repo-{i}", stars=i) for i in range(15)]
     html = render(_profile(), repos, {}, _config())
     assert "repo-14" in html  # highest starred
-    assert "repo-0" not in html  # below top 10
 
 
 def test_render_top_recent_shows_most_recent():
     repos = [_repo(f"repo-{i}", updated_days_ago=i) for i in range(15)]
     html = render(_profile(), repos, {}, _config())
     assert "repo-0" in html   # most recent (0 days ago)
-    assert "repo-14" not in html  # oldest, not in top 10
 
 
 def test_render_separates_own_and_forked():
@@ -74,6 +80,17 @@ def test_render_separates_own_and_forked():
     assert "mine" in html
     assert "theirs" in html
     assert "org/original" in html
+
+
+def test_render_uses_total_own_repo_count():
+    repos = [_repo(f"mine-{i}") for i in range(12)]
+    html = render(_profile(), repos, {}, _config())
+    assert "My Repos (12)" in html
+
+
+def test_render_maps_cplusplus_language_class():
+    html = render(_profile(), [_repo("cpp-repo", language="C++")], {}, _config())
+    assert "lang-Cpp" in html
 
 
 def test_render_shows_groups():
