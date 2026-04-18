@@ -56,6 +56,7 @@ def _config(mode="public"):
         mode=mode,
         output="out.html",
         ollama_model="llama3",
+        ollama_url="http://localhost:11434",
         skip_ollama=True,
         groups={},
     )

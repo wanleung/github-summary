@@ -32,6 +32,7 @@ def _config(groups=None, skip_ollama=True):
         mode="public",
         output="out.html",
         ollama_model="llama3",
+        ollama_url="http://localhost:11434",
         skip_ollama=skip_ollama,
         groups=groups or {},
     )

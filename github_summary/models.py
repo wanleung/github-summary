@@ -44,5 +44,6 @@ class Config:
     mode: str  # "public" | "private"
     output: str
     ollama_model: str
+    ollama_url: str
     skip_ollama: bool
     groups: Dict[str, GroupConfig] = field(default_factory=dict)

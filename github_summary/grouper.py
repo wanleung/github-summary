@@ -45,7 +45,9 @@ def _group_by_topics(repos: List[RepoData]) -> Tuple[GroupMap, List[RepoData]]:
     return result, remaining
 
 
-def _group_by_llm(repos: List[RepoData], ollama_model: str) -> GroupMap:
+def _group_by_llm(
+    repos: List[RepoData], ollama_model: str, ollama_url: str
+) -> GroupMap:
     if not repos:
         return {}
 
@@ -63,7 +65,7 @@ def _group_by_llm(repos: List[RepoData], ollama_model: str) -> GroupMap:
 
     try:
         resp = requests.post(
-            "http://localhost:11434/api/generate",
+            f"{ollama_url.rstrip('/')}/api/generate",
             json={"model": ollama_model, "prompt": prompt, "stream": False},
             timeout=60,
         )
@@ -109,7 +111,7 @@ def group_repos(repos: List[RepoData], config: Config) -> GroupMap:
 
     # Step 3: Ollama LLM grouping (if enabled and Ollama reachable)
     if remaining and not config.skip_ollama:
-        llm_groups = _group_by_llm(remaining, config.ollama_model)
+        llm_groups = _group_by_llm(remaining, config.ollama_model, config.ollama_url)
         _merge_into_result(llm_groups)
         assigned = set()
         for repos_in_group in llm_groups.values():
