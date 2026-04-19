@@ -101,6 +101,24 @@ def _call_opencode_go(repos: List[RepoData], model: str, api_key: str) -> GroupM
     return _parse_llm_json(text, repos)
 
 
+def _probe_opencode_go(model: str, api_key: str) -> bool:
+    """Quick reachability check — send a trivial 1-repo prompt with a short timeout."""
+    try:
+        resp = requests.post(
+            "https://opencode.ai/zen/go/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": 'Return the JSON: {"test": ["probe"]}'}],
+                "max_tokens": 20,
+            },
+            timeout=15,
+        )
+        return resp.status_code < 500
+    except Exception:
+        return False
+
+
 def _batch_group(
     repos: List[RepoData],
     call_fn,
@@ -146,6 +164,13 @@ def _group_by_ollama(
 def _group_by_opencode_go(
     repos: List[RepoData], model: str, api_key: str
 ) -> GroupMap:
+    print("  Checking OpenCode Go connectivity...", file=sys.stderr)
+    if not _probe_opencode_go(model, api_key):
+        print(
+            "  Warning: OpenCode Go is unreachable (check API key and network). Skipping.",
+            file=sys.stderr,
+        )
+        return {}
     return _batch_group(
         repos,
         lambda batch: _call_opencode_go(batch, model, api_key),
