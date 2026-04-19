@@ -1,5 +1,4 @@
 # github_summary/fetcher.py
-import time
 from datetime import datetime, timezone
 from typing import List, Tuple
 
@@ -83,24 +82,22 @@ def fetch_repos(username: str, token: str, mode: str) -> List[RepoData]:
 
 
 def fetch_commit_count(username: str, repo_name: str, token: str) -> int:
-    """Return the authenticated user's total commit count for a repo. Returns 0 if unavailable."""
-    url = f"{BASE_URL}/repos/{username}/{repo_name}/stats/contributors"
-    for _ in range(3):
-        resp = requests.get(url, headers=_headers(token))
-        if resp.status_code == 202:
-            time.sleep(2)
-            continue
-        if resp.status_code in (204, 404):
-            return 0
-        resp.raise_for_status()
-        contributors = resp.json()
-        if not isinstance(contributors, list):
-            return 0
-        for c in contributors:
-            if c.get("author", {}).get("login", "").lower() == username.lower():
-                return c.get("total", 0)
+    """Return total commit count for a repo by reading pagination Link header."""
+    import re
+
+    url = f"{BASE_URL}/repos/{username}/{repo_name}/commits"
+    params = {"author": username, "per_page": 1}
+    resp = requests.get(url, headers=_headers(token), params=params)
+    if resp.status_code in (404, 409):  # 404=not found, 409=empty repo
         return 0
-    return 0
+    resp.raise_for_status()
+    link = resp.headers.get("Link", "")
+    match = re.search(r'page=(\d+)>; rel="last"', link)
+    if match:
+        return int(match.group(1))
+    # No Link header → all commits fit on one page
+    data = resp.json()
+    return len(data) if isinstance(data, list) else 0
 
 
 def fetch_all(

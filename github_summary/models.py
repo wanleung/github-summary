@@ -46,4 +46,7 @@ class Config:
     ollama_model: str
     skip_ollama: bool
     ollama_url: str = "http://localhost:11434"
+    llm_provider: str = "ollama"          # "ollama" | "opencode_go"
+    opencode_go_api_key: str = ""
+    opencode_go_model: str = "qwen3.5-plus"
     groups: Dict[str, GroupConfig] = field(default_factory=dict)
