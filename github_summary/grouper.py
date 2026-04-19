@@ -45,16 +45,14 @@ def _group_by_topics(repos: List[RepoData]) -> Tuple[GroupMap, List[RepoData]]:
     return result, remaining
 
 
-def _group_by_ollama(
-    repos: List[RepoData], ollama_model: str, ollama_url: str
-) -> GroupMap:
-    if not repos:
-        return {}
+_LLM_BATCH_SIZE = 30
 
+
+def _build_prompt(repos: List[RepoData]) -> str:
     repo_list = "\n".join(
         f"- {r.name}: {r.description or 'no description'}" for r in repos
     )
-    prompt = (
+    return (
         "You are a software developer categorising GitHub repositories. "
         "Group the following repositories into named categories. "
         "Return ONLY a JSON object where keys are category names and values are "
@@ -63,76 +61,96 @@ def _group_by_ollama(
         f"Repositories:\n{repo_list}"
     )
 
-    try:
-        resp = requests.post(
-            f"{ollama_url.rstrip('/')}/api/generate",
-            json={"model": ollama_model, "prompt": prompt, "stream": False},
-            timeout=60,
-        )
-        resp.raise_for_status()
-        text = resp.json().get("response", "")
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start == -1 or end == 0:
-            return {"Other": repos}
-        data = json.loads(text[start:end])
-        repo_map = {r.name: r for r in repos}
-        result: GroupMap = {}
-        for group_name, repo_names in data.items():
-            matched = [repo_map[n] for n in repo_names if n in repo_map]
-            if matched:
-                result[group_name] = matched
-        return result
-    except Exception as e:
-        print(f"  Warning: Ollama grouping failed ({e}), skipping.", file=sys.stderr)
-        return {"Other": repos}
+
+def _parse_llm_json(text: str, repos: List[RepoData]) -> GroupMap:
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start == -1 or end == 0:
+        return {}
+    data = json.loads(text[start:end])
+    repo_map = {r.name: r for r in repos}
+    result: GroupMap = {}
+    for group_name, repo_names in data.items():
+        matched = [repo_map[n] for n in repo_names if n in repo_map]
+        if matched:
+            result[group_name] = matched
+    return result
+
+
+def _call_ollama(repos: List[RepoData], ollama_model: str, ollama_url: str) -> GroupMap:
+    prompt = _build_prompt(repos)
+    resp = requests.post(
+        f"{ollama_url.rstrip('/')}/api/generate",
+        json={"model": ollama_model, "prompt": prompt, "stream": False},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return _parse_llm_json(resp.json().get("response", ""), repos)
+
+
+def _call_opencode_go(repos: List[RepoData], model: str, api_key: str) -> GroupMap:
+    prompt = _build_prompt(repos)
+    resp = requests.post(
+        "https://opencode.ai/zen/go/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    text = resp.json()["choices"][0]["message"]["content"]
+    return _parse_llm_json(text, repos)
+
+
+def _batch_group(
+    repos: List[RepoData],
+    call_fn,
+    label: str,
+) -> GroupMap:
+    """Split repos into batches, call call_fn per batch, merge results."""
+    if not repos:
+        return {}
+
+    merged: GroupMap = {}
+    batches = [repos[i:i + _LLM_BATCH_SIZE] for i in range(0, len(repos), _LLM_BATCH_SIZE)]
+    total = len(batches)
+
+    for idx, batch in enumerate(batches, 1):
+        if total > 1:
+            print(f"  {label}: batch {idx}/{total} ({len(batch)} repos)...",
+                  file=sys.stderr)
+        try:
+            groups = call_fn(batch)
+            for group_name, group_repos in groups.items():
+                if group_name in merged:
+                    existing = {r.name for r in merged[group_name]}
+                    merged[group_name].extend(r for r in group_repos if r.name not in existing)
+                else:
+                    merged[group_name] = list(group_repos)
+        except Exception as e:
+            print(f"  Warning: {label} grouping failed on batch {idx} ({e}), skipping batch.",
+                  file=sys.stderr)
+
+    return merged
+
+
+def _group_by_ollama(
+    repos: List[RepoData], ollama_model: str, ollama_url: str
+) -> GroupMap:
+    return _batch_group(
+        repos,
+        lambda batch: _call_ollama(batch, ollama_model, ollama_url),
+        "Ollama",
+    )
 
 
 def _group_by_opencode_go(
     repos: List[RepoData], model: str, api_key: str
 ) -> GroupMap:
-    if not repos:
-        return {}
-
-    repo_list = "\n".join(
-        f"- {r.name}: {r.description or 'no description'}" for r in repos
+    return _batch_group(
+        repos,
+        lambda batch: _call_opencode_go(batch, model, api_key),
+        "OpenCode Go",
     )
-    prompt = (
-        "You are a software developer categorising GitHub repositories. "
-        "Group the following repositories into named categories. "
-        "Return ONLY a JSON object where keys are category names and values are "
-        "lists of repo names. Use 2-5 categories max. "
-        "Every repo must appear in exactly one category.\n\n"
-        f"Repositories:\n{repo_list}"
-    )
-
-    try:
-        resp = requests.post(
-            "https://opencode.ai/zen/go/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=60,
-        )
-        resp.raise_for_status()
-        text = resp.json()["choices"][0]["message"]["content"]
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start == -1 or end == 0:
-            return {"Other": repos}
-        data = json.loads(text[start:end])
-        repo_map = {r.name: r for r in repos}
-        result: GroupMap = {}
-        for group_name, repo_names in data.items():
-            matched = [repo_map[n] for n in repo_names if n in repo_map]
-            if matched:
-                result[group_name] = matched
-        return result
-    except Exception as e:
-        print(f"  Warning: OpenCode Go grouping failed ({e}), skipping.", file=sys.stderr)
-        return {"Other": repos}
 
 
 def group_repos(repos: List[RepoData], config: Config) -> GroupMap:
