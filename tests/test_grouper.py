@@ -26,7 +26,8 @@ def _repo(name, topics=None, description=None):
     )
 
 
-def _config(groups=None, skip_ollama=True):
+def _config(groups=None, skip_ollama=True, llm_provider="ollama",
+            opencode_go_api_key="", opencode_go_model="qwen3.5-plus"):
     return Config(
         username="user",
         mode="public",
@@ -34,6 +35,9 @@ def _config(groups=None, skip_ollama=True):
         ollama_model="llama3",
         ollama_url="http://localhost:11434",
         skip_ollama=skip_ollama,
+        llm_provider=llm_provider,
+        opencode_go_api_key=opencode_go_api_key,
+        opencode_go_model=opencode_go_model,
         groups=groups or {},
     )
 
@@ -128,7 +132,7 @@ def test_group_repos_ollama_called_when_not_skipped():
     repos = [_repo("unmatched")]
     config = _config(skip_ollama=False)
     with patch(
-        "github_summary.grouper._group_by_llm", return_value={"Misc": repos}
+        "github_summary.grouper._group_by_ollama", return_value={"Misc": repos}
     ) as mock_llm:
         result = group_repos(repos, config)
 
@@ -148,10 +152,35 @@ def test_group_repos_preserves_repos_omitted_by_llm():
     repos = [_repo("r1"), _repo("r2")]
     config = _config(skip_ollama=False)
     with patch(
-        "github_summary.grouper._group_by_llm", return_value={"LLM Group": [_repo("r1")]}
+        "github_summary.grouper._group_by_ollama", return_value={"LLM Group": [_repo("r1")]}
     ):
         result = group_repos(repos, config)
     assert "LLM Group" in result
     assert {repo.name for repo in result["LLM Group"]} == {"r1"}
     assert "Other" in result
     assert {repo.name for repo in result["Other"]} == {"r2"}
+
+
+def test_group_repos_uses_opencode_go_when_provider_set():
+    repos = [_repo("unmatched")]
+    config = _config(skip_ollama=False, llm_provider="opencode_go",
+                     opencode_go_api_key="test-key")
+    with patch(
+        "github_summary.grouper._group_by_opencode_go", return_value={"Cloud": repos}
+    ) as mock_go:
+        result = group_repos(repos, config)
+
+    mock_go.assert_called_once_with(repos, "qwen3.5-plus", "test-key")
+    assert "Cloud" in result
+
+
+def test_group_repos_falls_back_to_ollama_if_no_go_key():
+    repos = [_repo("unmatched")]
+    config = _config(skip_ollama=False, llm_provider="opencode_go", opencode_go_api_key="")
+    with patch("github_summary.grouper._group_by_ollama", return_value={"Misc": repos}) as mock_ollama:
+        with patch("github_summary.grouper._group_by_opencode_go") as mock_go:
+            result = group_repos(repos, config)
+
+    mock_ollama.assert_called_once()
+    mock_go.assert_not_called()
+    assert "Misc" in result

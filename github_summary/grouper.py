@@ -45,7 +45,7 @@ def _group_by_topics(repos: List[RepoData]) -> Tuple[GroupMap, List[RepoData]]:
     return result, remaining
 
 
-def _group_by_llm(
+def _group_by_ollama(
     repos: List[RepoData], ollama_model: str, ollama_url: str
 ) -> GroupMap:
     if not repos:
@@ -88,6 +88,53 @@ def _group_by_llm(
         return {"Other": repos}
 
 
+def _group_by_opencode_go(
+    repos: List[RepoData], model: str, api_key: str
+) -> GroupMap:
+    if not repos:
+        return {}
+
+    repo_list = "\n".join(
+        f"- {r.name}: {r.description or 'no description'}" for r in repos
+    )
+    prompt = (
+        "You are a software developer categorising GitHub repositories. "
+        "Group the following repositories into named categories. "
+        "Return ONLY a JSON object where keys are category names and values are "
+        "lists of repo names. Use 2-5 categories max. "
+        "Every repo must appear in exactly one category.\n\n"
+        f"Repositories:\n{repo_list}"
+    )
+
+    try:
+        resp = requests.post(
+            "https://opencode.ai/zen/go/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+        text = resp.json()["choices"][0]["message"]["content"]
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start == -1 or end == 0:
+            return {"Other": repos}
+        data = json.loads(text[start:end])
+        repo_map = {r.name: r for r in repos}
+        result: GroupMap = {}
+        for group_name, repo_names in data.items():
+            matched = [repo_map[n] for n in repo_names if n in repo_map]
+            if matched:
+                result[group_name] = matched
+        return result
+    except Exception as e:
+        print(f"  Warning: OpenCode Go grouping failed ({e}), skipping.", file=sys.stderr)
+        return {"Other": repos}
+
+
 def group_repos(repos: List[RepoData], config: Config) -> GroupMap:
     result: GroupMap = {}
 
@@ -109,9 +156,16 @@ def group_repos(repos: List[RepoData], config: Config) -> GroupMap:
     topic_groups, remaining = _group_by_topics(remaining)
     _merge_into_result(topic_groups)
 
-    # Step 3: Ollama LLM grouping (if enabled and Ollama reachable)
+    # Step 3: LLM grouping (if enabled)
     if remaining and not config.skip_ollama:
-        llm_groups = _group_by_llm(remaining, config.ollama_model, config.ollama_url)
+        if config.llm_provider == "opencode_go" and config.opencode_go_api_key:
+            llm_groups = _group_by_opencode_go(
+                remaining, config.opencode_go_model, config.opencode_go_api_key
+            )
+        else:
+            llm_groups = _group_by_ollama(
+                remaining, config.ollama_model, config.ollama_url
+            )
         _merge_into_result(llm_groups)
         assigned = set()
         for repos_in_group in llm_groups.values():
