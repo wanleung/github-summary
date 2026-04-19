@@ -4,8 +4,21 @@
 username: your-github-username   # required if not using --username flag
 mode: public                     # public (only public repos) | private (all repos)
 output: github-summary.html      # output file name
+
+# LLM provider for auto-grouping ungrouped repos (optional).
+# Options: ollama (default) | opencode_go | opencode_cli
+# opencode_cli uses the local `opencode` CLI binary (install from https://opencode.ai)
+llm_provider: ollama
+
+# Ollama settings (used when llm_provider: ollama)
 ollama_model: llama3             # Ollama model for auto-grouping
 ollama_url: http://localhost:11434  # Ollama base URL (change if Ollama runs on another host)
+
+# OpenCode Go settings (used when llm_provider: opencode_go OR opencode_cli)
+# For opencode_go: get your API key at https://opencode.ai/auth
+# For opencode_cli: install opencode CLI, run `opencode providers` to authenticate
+# opencode_go_api_key: your-api-key-here
+# opencode_go_model: opencode-go/qwen3.5-plus   # model in provider/model format
 
 groups:
   AI Tools:
