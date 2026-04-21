@@ -1,9 +1,12 @@
 # github_summary/grouper.py
+import hashlib
 import json
 import shutil
 import subprocess
 import sys
-from typing import Dict, List, Tuple
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -48,6 +51,33 @@ def _group_by_topics(repos: List[RepoData]) -> Tuple[GroupMap, List[RepoData]]:
 
 
 _LLM_BATCH_SIZE = 5
+
+_CACHE_VERSION = 1
+
+
+def _cache_key(repos: List[RepoData]) -> str:
+    """Stable hash of a batch — changes when any repo name or description changes."""
+    payload = "\n".join(
+        f"{r.name}:{r.description or ''}" for r in sorted(repos, key=lambda r: r.name)
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _load_cache(path: Path) -> dict:
+    if path.exists():
+        try:
+            data = json.loads(path.read_text())
+            if data.get("version") == _CACHE_VERSION:
+                return data.get("entries", {})
+        except Exception:
+            pass
+    return {}
+
+
+def _save_cache(path: Path, entries: dict) -> None:
+    path.write_text(json.dumps({"version": _CACHE_VERSION, "entries": entries}, indent=2))
+
+
 
 
 def _build_prompt(repos: List[RepoData]) -> str:
@@ -122,18 +152,8 @@ def _call_opencode_cli(repos: List[RepoData], model: str) -> GroupMap:
     return _parse_llm_json(text, repos)
 
 
-def _group_by_opencode_cli(repos: List[RepoData], model: str) -> GroupMap:
-    if not shutil.which("opencode"):
-        print("  Warning: opencode CLI not found in PATH. Skipping.", file=sys.stderr)
-        return {}
-    return _batch_group(
-        repos,
-        lambda batch: _call_opencode_cli(batch, model),
-        "OpenCode CLI",
-    )
 
-
-
+def _probe_opencode_go(model: str, api_key: str) -> bool:
     """Quick reachability check — send a trivial 1-repo prompt with a short timeout."""
     try:
         resp = requests.post(
@@ -155,16 +175,38 @@ def _batch_group(
     repos: List[RepoData],
     call_fn,
     label: str,
+    cache_path: Optional[Path] = None,
 ) -> GroupMap:
-    """Split repos into batches, call call_fn per batch, merge results."""
+    """Split repos into batches, call call_fn per batch, merge results.
+
+    Results are cached by batch content hash when cache_path is provided.
+    """
     if not repos:
         return {}
+
+    entries = _load_cache(cache_path) if cache_path else {}
+    repo_map = {r.name: r for r in repos}
 
     merged: GroupMap = {}
     batches = [repos[i:i + _LLM_BATCH_SIZE] for i in range(0, len(repos), _LLM_BATCH_SIZE)]
     total = len(batches)
+    cache_hits = 0
 
     for idx, batch in enumerate(batches, 1):
+        key = _cache_key(batch)
+        if key in entries:
+            cache_hits += 1
+            cached_groups: dict = entries[key]["groups"]
+            for group_name, repo_names in cached_groups.items():
+                matched = [repo_map[n] for n in repo_names if n in repo_map]
+                if matched:
+                    if group_name in merged:
+                        existing = {r.name for r in merged[group_name]}
+                        merged[group_name].extend(r for r in matched if r.name not in existing)
+                    else:
+                        merged[group_name] = matched
+            continue
+
         if total > 1:
             print(f"  {label}: batch {idx}/{total} ({len(batch)} repos)...",
                   file=sys.stderr)
@@ -176,25 +218,37 @@ def _batch_group(
                     merged[group_name].extend(r for r in group_repos if r.name not in existing)
                 else:
                     merged[group_name] = list(group_repos)
+            if cache_path and groups:
+                entries[key] = {
+                    "groups": {k: [r.name for r in v] for k, v in groups.items()},
+                    "cached_at": datetime.now(timezone.utc).isoformat(),
+                }
+                _save_cache(cache_path, entries)
         except Exception as e:
             print(f"  Warning: {label} grouping failed on batch {idx} ({e}), skipping batch.",
                   file=sys.stderr)
+
+    if cache_hits:
+        print(f"  {label}: {cache_hits}/{total} batches from cache.", file=sys.stderr)
 
     return merged
 
 
 def _group_by_ollama(
-    repos: List[RepoData], ollama_model: str, ollama_url: str
+    repos: List[RepoData], ollama_model: str, ollama_url: str,
+    cache_path: Optional[Path] = None,
 ) -> GroupMap:
     return _batch_group(
         repos,
         lambda batch: _call_ollama(batch, ollama_model, ollama_url),
         "Ollama",
+        cache_path=cache_path,
     )
 
 
 def _group_by_opencode_go(
-    repos: List[RepoData], model: str, api_key: str
+    repos: List[RepoData], model: str, api_key: str,
+    cache_path: Optional[Path] = None,
 ) -> GroupMap:
     print("  Checking OpenCode Go connectivity...", file=sys.stderr)
     if not _probe_opencode_go(model, api_key):
@@ -207,11 +261,28 @@ def _group_by_opencode_go(
         repos,
         lambda batch: _call_opencode_go(batch, model, api_key),
         "OpenCode Go",
+        cache_path=cache_path,
+    )
+
+
+def _group_by_opencode_cli(
+    repos: List[RepoData], model: str,
+    cache_path: Optional[Path] = None,
+) -> GroupMap:
+    if not shutil.which("opencode"):
+        print("  Warning: opencode CLI not found in PATH. Skipping.", file=sys.stderr)
+        return {}
+    return _batch_group(
+        repos,
+        lambda batch: _call_opencode_cli(batch, model),
+        "OpenCode CLI",
+        cache_path=cache_path,
     )
 
 
 def group_repos(repos: List[RepoData], config: Config) -> GroupMap:
     result: GroupMap = {}
+    cache_path = Path(config.llm_cache) if config.llm_cache else None
 
     def _merge_into_result(groups: GroupMap) -> None:
         for group_name, grouped_repos in groups.items():
@@ -235,13 +306,16 @@ def group_repos(repos: List[RepoData], config: Config) -> GroupMap:
     if remaining and not config.skip_ollama:
         if config.llm_provider == "opencode_go" and config.opencode_go_api_key:
             llm_groups = _group_by_opencode_go(
-                remaining, config.opencode_go_model, config.opencode_go_api_key
+                remaining, config.opencode_go_model, config.opencode_go_api_key,
+                cache_path=cache_path,
             )
         elif config.llm_provider == "opencode_cli":
-            llm_groups = _group_by_opencode_cli(remaining, config.opencode_go_model)
+            llm_groups = _group_by_opencode_cli(remaining, config.opencode_go_model,
+                                                cache_path=cache_path)
         else:
             llm_groups = _group_by_ollama(
-                remaining, config.ollama_model, config.ollama_url
+                remaining, config.ollama_model, config.ollama_url,
+                cache_path=cache_path,
             )
         _merge_into_result(llm_groups)
         assigned = set()

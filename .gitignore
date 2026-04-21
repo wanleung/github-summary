@@ -1,2 +1,9 @@
 .superpowers/
 .worktrees/
+venv/
+config.yaml
+github-summary.html
+history.txt
+*.pyc
+__pycache__/
+.github-summary-llm-cache.json

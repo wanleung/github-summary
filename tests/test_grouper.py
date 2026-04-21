@@ -1,5 +1,6 @@
 # tests/test_grouper.py
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from github_summary.grouper import (
@@ -170,7 +171,8 @@ def test_group_repos_uses_opencode_go_when_provider_set():
     ) as mock_go:
         result = group_repos(repos, config)
 
-    mock_go.assert_called_once_with(repos, "qwen3.5-plus", "test-key")
+    mock_go.assert_called_once_with(repos, "qwen3.5-plus", "test-key",
+                                    cache_path=Path(".github-summary-llm-cache.json"))
     assert "Cloud" in result
 
 
@@ -195,5 +197,6 @@ def test_group_repos_uses_opencode_cli_when_provider_set():
     ) as mock_cli:
         result = group_repos(repos, config)
 
-    mock_cli.assert_called_once_with(repos, "opencode-go/qwen3.5-plus")
+    mock_cli.assert_called_once_with(repos, "opencode-go/qwen3.5-plus",
+                                     cache_path=Path(".github-summary-llm-cache.json"))
     assert "Tools" in result

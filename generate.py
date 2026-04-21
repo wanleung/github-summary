@@ -57,6 +57,7 @@ def main(username, mode, output, config_path, ollama_model, ollama_url, skip_oll
     resolved_provider = llm_provider or file_cfg.get("llm_provider", "ollama")
     resolved_go_key = opencode_go_api_key or file_cfg.get("opencode_go_api_key", "")
     resolved_go_model = opencode_go_model or file_cfg.get("opencode_go_model", "qwen3.5-plus")
+    resolved_cache = file_cfg.get("llm_cache", ".github-summary-llm-cache.json")
 
     raw_groups = file_cfg.get("groups", {}) or {}
     groups = {
@@ -77,6 +78,7 @@ def main(username, mode, output, config_path, ollama_model, ollama_url, skip_oll
         llm_provider=resolved_provider,
         opencode_go_api_key=resolved_go_key,
         opencode_go_model=resolved_go_model,
+        llm_cache=resolved_cache,
         groups=groups,
     )
 
